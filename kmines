@@ -1,0 +1,190 @@
+import tkinter as tk
+import random
+import tkinter.messagebox as MessageBox
+import time
+
+# Configuración del tablero
+SIZE = 5  # Tamaño del tablero
+NUM_MINES = 5  # Número de minas
+
+# Emojis para las minas y números
+MINA_EMOJI = "💣"
+BANDERA_EMOJI = "🚩"
+EMOJIS_NUMEROS = {
+    1: "1️⃣",
+    2: "2️⃣",
+    3: "3️⃣",
+    4: "4️⃣",
+    5: "5️⃣",
+    6: "6️⃣",
+    7: "7️⃣",
+    8: "8️⃣",
+}
+
+# Colores
+COLOR_FONDO = "#282828"  # Fondo oscuro
+COLOR_BOTON_NORMAL = "#c7c7c7"  # Gris claro
+COLOR_BOTON_REVELADO = "#ffffff"  # Blanco
+COLOR_BOTON_MINA = "#ff4444"  # Rojo
+COLOR_BOTON_BANDERA = "#ffcc00"  # Amarillo
+COLOR_TEXTO = "#000000"  # Negro
+COLOR_TEXTO_CLARO = "#ffffff"  # Blanco
+COLOR_BOTON_REINICIAR = "#4CAF50"  # Verde
+COLOR_BOTON_REINICIAR_ACTIVO = "#45a049"  # Verde oscuro
+
+class MinesweeperGame:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("Minesweeper")
+        self.master.geometry("450x550")  # Tamaño de la ventana
+        self.master.config(bg=COLOR_FONDO)  # Color de fondo oscuro
+
+        self.buttons = {}
+        self.mines = {}
+        self.revealed = {}
+        self.flags = set()
+        self.game_over = False
+        self.timer_started = False
+        self.start_time = None
+        self.time_elapsed = 0
+        self.mines_remaining = NUM_MINES
+
+        # Label para mostrar el tiempo
+        self.time_label = tk.Label(self.master, text="Tiempo: 0", font=("Helvetica", 14, "bold"), 
+                                 fg=COLOR_TEXTO_CLARO, bg=COLOR_FONDO)
+        self.time_label.grid(row=SIZE, column=0, columnspan=SIZE, pady=10)
+
+        # Label para mostrar las minas restantes
+        self.mines_label = tk.Label(self.master, text=f"Minas: {self.mines_remaining}", 
+                                  font=("Helvetica", 14, "bold"), fg=COLOR_TEXTO_CLARO, bg=COLOR_FONDO)
+        self.mines_label.grid(row=SIZE + 1, column=0, columnspan=SIZE, pady=10)
+
+        # Botón de reinicio
+        self.reset_button = tk.Button(self.master, text="Reiniciar", font=("Helvetica", 12, "bold"),
+                                      bg=COLOR_BOTON_REINICIAR, fg=COLOR_TEXTO_CLARO, 
+                                      activebackground=COLOR_BOTON_REINICIAR_ACTIVO,
+                                      command=self.reset_game)
+        self.reset_button.grid(row=SIZE + 2, column=0, columnspan=SIZE, pady=10)
+
+        # Inicializa las matrices de minas y revelado
+        self.create_buttons()
+
+    def create_buttons(self):
+        """Crea un tablero de botones de tamaño SIZE x SIZE."""
+        button_font = ("Helvetica", 16, "bold")
+        for row in range(SIZE):
+            for col in range(SIZE):
+                button = tk.Button(self.master, text="-", width=5, height=2, font=button_font,
+                                   relief="raised", bd=3, bg=COLOR_BOTON_NORMAL, fg=COLOR_TEXTO, 
+                                   activebackground="#dddddd", activeforeground=COLOR_TEXTO)
+                button.bind("<Button-1>", lambda e, row=row, col=col: self.reveal_cell(row, col))  # Clic izquierdo
+                button.bind("<Button-3>", lambda e, row=row, col=col: self.flag_cell(row, col))  # Clic derecho
+                button.grid(row=row, column=col, padx=5, pady=5)
+                self.buttons[(row, col)] = button
+                self.revealed[(row, col)] = False
+
+    def place_mines(self, first_row, first_col):
+        """Coloca las minas aleatoriamente en el tablero, evitando la primera celda."""
+        self.mines = {}
+        count = 0
+        while count < NUM_MINES:
+            row = random.randint(0, SIZE - 1)
+            col = random.randint(0, SIZE - 1)
+            if (row, col) not in self.mines and (row != first_row or col != first_col):
+                self.mines[(row, col)] = True
+                count += 1
+
+    def calculate_hints(self):
+        """Calcula las pistas (número de minas cercanas) para cada celda."""
+        self.hints = {}
+        for row in range(SIZE):
+            for col in range(SIZE):
+                if (row, col) not in self.mines:
+                    # Contamos las minas adyacentes
+                    count = 0
+                    for i in range(-1, 2):
+                        for j in range(-1, 2):
+                            if 0 <= row + i < SIZE and 0 <= col + j < SIZE:
+                                if (row + i, col + j) in self.mines:
+                                    count += 1
+                    self.hints[(row, col)] = count
+
+    def reveal_cell(self, row, col):
+        """Revela una celda del tablero."""
+        if self.game_over or self.revealed[(row, col)] or (row, col) in self.flags:
+            return
+
+        if not self.timer_started:
+            self.place_mines(row, col)  # Coloca las minas después del primer clic
+            self.calculate_hints()
+            self.timer_started = True
+            self.start_time = time.time()  # Inicia el temporizador
+            self.update_timer()
+
+        self.revealed[(row, col)] = True
+
+        # Si es una mina, termina el juego
+        if (row, col) in self.mines:
+            self.buttons[(row, col)].config(text=MINA_EMOJI, bg=COLOR_BOTON_MINA, fg=COLOR_TEXTO_CLARO, relief="sunken")
+            self.game_over = True
+            self.show_game_over("perdido")
+            return
+
+        # Si no es mina, revela el número de minas adyacentes
+        count = self.hints[(row, col)]
+        if count > 0:
+            self.buttons[(row, col)].config(text=EMOJIS_NUMEROS[count], bg=COLOR_BOTON_REVELADO, fg=COLOR_TEXTO, state="disabled", relief="sunken")
+        else:
+            self.buttons[(row, col)].config(text="", bg=COLOR_BOTON_REVELADO, state="disabled", relief="sunken")
+            # Si no tiene minas adyacentes, revela las casillas vecinas
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    if 0 <= row + i < SIZE and 0 <= col + j < SIZE:
+                        self.reveal_cell(row + i, col + j)
+
+        # Verificar si el juego ha sido ganado
+        if all(self.revealed[(r, c)] or (r, c) in self.mines for r in range(SIZE) for c in range(SIZE)):
+            self.game_over = True
+            self.show_game_over("ganado")
+
+    def flag_cell(self, row, col):
+        """Marca una celda con una bandera."""
+        if not self.revealed[(row, col)]:
+            button = self.buttons[(row, col)]
+            if (row, col) in self.flags:
+                button.config(text="-", bg=COLOR_BOTON_NORMAL)
+                self.flags.remove((row, col))
+                self.mines_remaining += 1
+            else:
+                button.config(text=BANDERA_EMOJI, bg=COLOR_BOTON_BANDERA)
+                self.flags.add((row, col))
+                self.mines_remaining -= 1
+            self.mines_label.config(text=f"Minas: {self.mines_remaining}")
+
+    def update_timer(self):
+        """Actualiza el temporizador del juego."""
+        if not self.game_over and self.timer_started:
+            self.time_elapsed = int(time.time() - self.start_time)
+            self.time_label.config(text=f"Tiempo: {self.time_elapsed}")
+            self.master.after(1000, self.update_timer)
+
+    def show_game_over(self, result):
+        """Muestra el mensaje de fin de juego con carita feliz o triste."""
+        if result == "ganado":
+            MessageBox.showinfo("¡Felicidades!", f"¡Has ganado en {self.time_elapsed} segundos! 😊")
+        else:
+            MessageBox.showinfo("Fin del juego", "¡Perdiste! 😞")
+
+    def reset_game(self):
+        """Reinicia el juego."""
+        self.game_over = False
+        self.timer_started = False
+        self.time_elapsed = 0
+        self.mines_remaining = NUM_MINES
+        self.time_label.config(text="Tiempo: 0")
+        self.mines_label.config(text=f"Minas: {self.mines_remaining}")
+        self.flags = set()
+        for (row, col), button in self.buttons.items():
+            button.config(text="-", bg=COLOR_BOTON_NORMAL, state="normal", relief="raised")
+            self.revealed[(row, col)] = False
+
